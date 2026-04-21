@@ -28,7 +28,8 @@ public class CreateSkillRequestCommandHandler : IRequestHandler<CreateSkillReque
         var hasProfile = await _context.UserProfiles
             .AnyAsync(p => p.AccountID == request.AccountID, cancellationToken);
         if (!hasProfile)
-            throw new ValidationException(new[] {
+            throw new ValidationException(new[]
+            {
                 new ValidationFailure("Profile", "Для создания запроса необходимо сначала заполнить профиль.")
             });
 

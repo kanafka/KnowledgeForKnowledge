@@ -14,6 +14,8 @@ namespace API.Controllers;
 [Authorize]
 public class ProofsController : BaseController
 {
+    private const int MaxProofsPerSkill = 3;
+
     private readonly IWebHostEnvironment _env;
     private readonly IApplicationDbContext _context;
 
@@ -23,7 +25,7 @@ public class ProofsController : BaseController
         _context = context;
     }
 
-    /// <summary>Список подтверждений пользователя</summary>
+    /// <summary>Список подтверждений пользователя.</summary>
     [HttpGet("{accountId:guid}")]
     public async Task<IActionResult> GetProofs(Guid accountId)
     {
@@ -31,7 +33,7 @@ public class ProofsController : BaseController
         return Ok(result);
     }
 
-    /// <summary>Загрузить подтверждающий файл (multipart/form-data). Форматы: JPEG, PNG, WebP, PDF. Макс 10 МБ.</summary>
+    /// <summary>Загрузить подтверждающий файл: JPEG, PNG, WebP или PDF, максимум 10 МБ.</summary>
     [HttpPost]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> UploadProof([FromForm] UploadProofRequest request)
@@ -41,12 +43,19 @@ public class ProofsController : BaseController
         if (request.File == null || request.File.Length == 0)
             return BadRequest(new { message = "Файл не указан." });
 
-        // Лимит на количество файлов
         var existingCount = await _context.Proofs.CountAsync(p => p.AccountID == accountId);
         if (existingCount >= FileValidator.GetMaxProofsPerUser())
             return BadRequest(new { message = $"Достигнут лимит в {FileValidator.GetMaxProofsPerUser()} файлов." });
 
-        // Валидация типа и содержимого
+        if (request.SkillID.HasValue)
+        {
+            var existingSkillProofCount = await _context.Proofs.CountAsync(
+                p => p.AccountID == accountId && p.SkillID == request.SkillID.Value);
+
+            if (existingSkillProofCount >= MaxProofsPerSkill)
+                return BadRequest(new { message = $"К одному навыку можно прикрепить не более {MaxProofsPerSkill} файлов." });
+        }
+
         var error = await FileValidator.ValidateProofAsync(request.File);
         if (error != null)
             return BadRequest(new { message = error });

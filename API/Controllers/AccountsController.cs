@@ -34,11 +34,11 @@ public class AccountsController : BaseController
 
     /// <summary>Регистрация нового аккаунта</summary>
     [HttpPost]
-    [ProducesResponseType(typeof(Guid), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(CreateAccountResult), StatusCodes.Status201Created)]
     public async Task<IActionResult> CreateAccount([FromBody] CreateAccountCommand command)
     {
-        var accountId = await Mediator.Send(command);
-        return CreatedAtAction(nameof(GetAccount), new { id = accountId }, accountId);
+        var result = await Mediator.Send(command);
+        return CreatedAtAction(nameof(GetAccount), new { id = result.AccountId }, result);
     }
 
     /// <summary>Получить аккаунт текущего пользователя</summary>

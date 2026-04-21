@@ -23,6 +23,8 @@ public class GetUserSkillsQueryHandler : IRequestHandler<GetUserSkillsQuery, Lis
                 us.SkillsCatalog.SkillName,
                 us.SkillsCatalog.Epithet,
                 us.SkillLevel,
+                us.Description,
+                us.LearnedAt,
                 us.IsVerified))
             .ToListAsync(cancellationToken);
     }

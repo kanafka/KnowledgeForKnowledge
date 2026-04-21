@@ -23,6 +23,7 @@ public class GetApplicationsQueryHandler : IRequestHandler<GetApplicationsQuery,
             .Include(a => a.SkillOffer).ThenInclude(o => o!.Account)
             .Include(a => a.SkillRequest).ThenInclude(r => r!.SkillsCatalog)
             .Include(a => a.SkillRequest).ThenInclude(r => r!.Account)
+            .Where(a => a.SkillOffer != null || a.SkillRequest != null)
             .AsQueryable();
 
         query = request.QueryType switch
@@ -33,11 +34,12 @@ public class GetApplicationsQueryHandler : IRequestHandler<GetApplicationsQuery,
                      || a.SkillRequest != null && a.SkillRequest.AccountID == request.CurrentAccountID)
                     && a.Status == ApplicationStatus.Pending),
             ApplicationQueryType.Outgoing =>
-                query.Where(a => a.ApplicantID == request.CurrentAccountID),
+                query.Where(a => a.ApplicantID == request.CurrentAccountID && a.Status == ApplicationStatus.Pending),
             ApplicationQueryType.Processed =>
                 query.Where(a =>
-                    (a.SkillOffer != null && a.SkillOffer.AccountID == request.CurrentAccountID
-                     || a.SkillRequest != null && a.SkillRequest.AccountID == request.CurrentAccountID)
+                    ((a.SkillOffer != null && a.SkillOffer.AccountID == request.CurrentAccountID)
+                     || (a.SkillRequest != null && a.SkillRequest.AccountID == request.CurrentAccountID)
+                     || a.ApplicantID == request.CurrentAccountID)
                     && a.Status != ApplicationStatus.Pending),
             _ => query
         };

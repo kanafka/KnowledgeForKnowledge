@@ -14,10 +14,12 @@ namespace API.Controllers;
 public class UserProfilesController : BaseController
 {
     private readonly IApplicationDbContext _context;
+    private readonly IWebHostEnvironment _environment;
 
-    public UserProfilesController(IApplicationDbContext context)
+    public UserProfilesController(IApplicationDbContext context, IWebHostEnvironment environment)
     {
         _context = context;
+        _environment = environment;
     }
 
     private Guid CurrentAccountId =>
@@ -62,7 +64,10 @@ public class UserProfilesController : BaseController
 
         var ext = Path.GetExtension(photo.FileName).ToLowerInvariant();
         var fileName = $"{CurrentAccountId}_{Guid.NewGuid():N}{ext}";
-        var uploadPath = Path.Combine("wwwroot", "uploads", "photos");
+        var webRootPath = string.IsNullOrWhiteSpace(_environment.WebRootPath)
+            ? Path.Combine(_environment.ContentRootPath, "wwwroot")
+            : _environment.WebRootPath;
+        var uploadPath = Path.Combine(webRootPath, "uploads", "photos");
         Directory.CreateDirectory(uploadPath);
 
         var filePath = Path.Combine(uploadPath, fileName);
@@ -72,11 +77,19 @@ public class UserProfilesController : BaseController
         var photoUrl = $"/uploads/photos/{fileName}";
 
         var profile = await _context.UserProfiles.FindAsync(CurrentAccountId);
-        if (profile is not null)
+        if (profile is null)
         {
-            profile.PhotoURL = photoUrl;
-            await _context.SaveChangesAsync();
+            profile = new Domain.Entities.UserProfile
+            {
+                AccountID = CurrentAccountId,
+                FullName = string.Empty,
+                PhotoURL = photoUrl
+            };
+            _context.UserProfiles.Add(profile);
         }
+
+        profile.PhotoURL = photoUrl;
+        await _context.SaveChangesAsync();
 
         return Ok(new { photoUrl });
     }

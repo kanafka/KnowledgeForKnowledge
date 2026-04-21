@@ -10,5 +10,7 @@ public record UserSkillDto(
     string SkillName,
     SkillEpithet Epithet,
     SkillLevel Level,
+    string? Description,
+    string? LearnedAt,
     bool IsVerified
 );

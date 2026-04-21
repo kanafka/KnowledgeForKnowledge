@@ -12,6 +12,7 @@ public record DealDto(
     Guid PartnerID,
     string PartnerName,
     string Status,
+    bool MyReviewExists,
     DateTime CreatedAt,
     DateTime? CompletedAt,
     string? OfferTitle,

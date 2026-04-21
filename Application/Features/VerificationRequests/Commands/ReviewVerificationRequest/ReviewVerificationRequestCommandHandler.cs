@@ -70,6 +70,9 @@ public class ReviewVerificationRequestCommandHandler
                 ? $"✅ Ваша заявка на {typeText} одобрена!"
                 : $"❌ Ваша заявка на {typeText} отклонена.";
 
+            if (request.NewStatus == VerificationStatus.Rejected && !string.IsNullOrWhiteSpace(request.RejectionReason))
+                resultText = $"{resultText}\nПричина: {request.RejectionReason.Trim()}";
+
             await _telegram.SendMessageAsync(entity.Account.TelegramID, resultText, cancellationToken);
         }
     }

@@ -20,6 +20,7 @@ public class GetDealsQueryHandler : IRequestHandler<GetDealsQuery, GetDealsResul
             .Include(d => d.Partner).ThenInclude(a => a.UserProfile)
             .Include(d => d.Application).ThenInclude(a => a.SkillOffer)
             .Include(d => d.Application).ThenInclude(a => a.SkillRequest)
+            .Include(d => d.Reviews)
             .Where(d => d.InitiatorID == request.AccountID || d.PartnerID == request.AccountID)
             .OrderByDescending(d => d.CreatedAt);
 
@@ -35,6 +36,7 @@ public class GetDealsQueryHandler : IRequestHandler<GetDealsQuery, GetDealsResul
                 d.PartnerID,
                 d.Partner.UserProfile != null ? d.Partner.UserProfile.FullName : d.Partner.Login,
                 d.Status.ToString(),
+                d.Reviews.Any(r => r.AuthorID == request.AccountID),
                 d.CreatedAt,
                 d.CompletedAt,
                 d.Application.SkillOffer != null ? d.Application.SkillOffer.Title : null,

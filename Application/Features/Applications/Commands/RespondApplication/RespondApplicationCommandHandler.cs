@@ -75,12 +75,10 @@ public class RespondApplicationCommandHandler : IRequestHandler<RespondApplicati
             };
             _context.Deals.Add(deal);
 
-            // Деактивируем объявление — больше нельзя откликаться
+            // Предложение закрываем после принятия, а запрос остаётся открытым,
+            // чтобы владелец мог продолжать собирать отклики, пока не удалит его сам.
             if (application.SkillOffer is not null)
                 application.SkillOffer.IsActive = false;
-
-            if (application.SkillRequest is not null)
-                application.SkillRequest.Status = RequestStatus.Fulfilled;
 
             // Уведомления в приложении
             _context.Notifications.Add(new Notification

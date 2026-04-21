@@ -386,7 +386,12 @@ FodyWeavers.xsd
 # Environment variables
 .env
 .env.local
+.env.production
 .env.*.local
+
+# Local user uploads
+API/uploads/
+API/wwwroot/uploads/
 
 # Application settings (keep appsettings.json, ignore environment-specific)
 **/appsettings.Development.json

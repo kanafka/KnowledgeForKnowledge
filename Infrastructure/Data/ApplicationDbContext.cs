@@ -76,6 +76,8 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
         {
             entity.HasKey(e => new { e.AccountID, e.SkillID });
             entity.Property(e => e.SkillLevel).IsRequired();
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.LearnedAt).HasMaxLength(150);
             entity.Property(e => e.IsVerified).HasDefaultValue(false);
 
             entity.HasOne(e => e.Account)

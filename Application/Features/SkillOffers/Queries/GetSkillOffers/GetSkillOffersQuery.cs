@@ -8,6 +8,9 @@ public record GetSkillOffersQuery(
     Guid? AccountID,
     bool? IsActive,
     string? Search,
+    Guid? ViewerAccountID,
+    bool? ViewerHasSkill,
+    bool? RequireBarter,
     int Page = 1,
     int PageSize = 20
 ) : IRequest<PagedResult<SkillOfferDto>>;

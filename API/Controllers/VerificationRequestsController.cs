@@ -57,10 +57,10 @@ public class VerificationRequestsController : BaseController
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Review(Guid id, [FromBody] ReviewBody body)
     {
-        await Mediator.Send(new ReviewVerificationRequestCommand(id, body.Status));
+        await Mediator.Send(new ReviewVerificationRequestCommand(id, body.Status, body.RejectionReason));
         return NoContent();
     }
 }
 
 public record SubmitVerificationRequest(VerificationRequestType RequestType, Guid? ProofID);
-public record ReviewBody(VerificationStatus Status);
+public record ReviewBody(VerificationStatus Status, string? RejectionReason);

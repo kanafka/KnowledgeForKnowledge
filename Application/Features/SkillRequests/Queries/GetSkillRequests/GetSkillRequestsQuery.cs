@@ -5,8 +5,13 @@ using MediatR;
 namespace Application.Features.SkillRequests.Queries.GetSkillRequests;
 
 public record GetSkillRequestsQuery(
+    Guid? SkillID,
     Guid? AccountID,
     RequestStatus? Status,
+    string? Search,
+    Guid? HelperAccountID,
+    bool? CanHelp,
+    bool? RequireBarter,
     int Page = 1,
     int PageSize = 20
 ) : IRequest<PagedResult<SkillRequestDto>>;

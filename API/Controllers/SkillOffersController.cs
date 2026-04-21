@@ -6,6 +6,7 @@ using Application.Features.SkillOffers.Queries.GetSkillOfferById;
 using Application.Features.SkillOffers.Queries.GetSkillOffers;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 
 namespace API.Controllers;
 
@@ -13,6 +14,9 @@ namespace API.Controllers;
 [Route("api/skilloffers")]
 public class SkillOffersController : BaseController
 {
+    private bool IsAdmin =>
+        User.IsInRole("Admin");
+
     /// <summary>Список предложений с фильтрацией и пагинацией</summary>
     [HttpGet]
     public async Task<IActionResult> GetOffers(
@@ -20,10 +24,14 @@ public class SkillOffersController : BaseController
         [FromQuery] Guid? accountId,
         [FromQuery] bool? isActive,
         [FromQuery] string? search,
+        [FromQuery] Guid? viewerAccountId,
+        [FromQuery] bool? viewerHasSkill,
+        [FromQuery] bool? requireBarter,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20)
     {
-        var result = await Mediator.Send(new GetSkillOffersQuery(skillId, accountId, isActive, search, page, pageSize));
+        var result = await Mediator.Send(
+            new GetSkillOffersQuery(skillId, accountId, isActive, search, viewerAccountId, viewerHasSkill, requireBarter, page, pageSize));
         return Ok(result);
     }
 
@@ -59,10 +67,10 @@ public class SkillOffersController : BaseController
     /// <summary>Удалить предложение</summary>
     [HttpDelete("{id:guid}")]
     [Authorize]
-    public async Task<IActionResult> DeleteOffer(Guid id)
+    public async Task<IActionResult> DeleteOffer(Guid id, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] DeleteCardRequest? request)
     {
         var accountId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-        await Mediator.Send(new DeleteSkillOfferCommand(id, accountId));
+        await Mediator.Send(new DeleteSkillOfferCommand(id, accountId, IsAdmin, request?.DeletionReason));
         return NoContent();
     }
 }
@@ -80,3 +88,5 @@ public class UpdateOfferRequest
     public string? Details { get; init; }
     public bool IsActive { get; init; }
 }
+
+public record DeleteCardRequest(string? DeletionReason);

@@ -25,8 +25,12 @@ public class UpsertUserProfileCommandHandler : IRequestHandler<UpsertUserProfile
             _context.UserProfiles.Add(profile);
         }
 
+        DateTime? normalizedDateOfBirth = request.DateOfBirth.HasValue
+            ? DateTime.SpecifyKind(request.DateOfBirth.Value.Date, DateTimeKind.Utc)
+            : null;
+
         profile.FullName = request.FullName;
-        profile.DateOfBirth = request.DateOfBirth;
+        profile.DateOfBirth = normalizedDateOfBirth;
         profile.PhotoURL = request.PhotoURL;
         profile.ContactInfo = request.ContactInfo;
         profile.Description = request.Description;

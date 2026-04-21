@@ -26,18 +26,17 @@ public class CreateReviewCommandHandler : IRequestHandler<CreateReviewCommand, G
         if (deal is null)
             throw new NotFoundException(nameof(Domain.Entities.Deal), request.DealID);
 
-        if (deal.Status != DealStatus.Completed)
-            throw new InvalidOperationException("Отзыв можно оставить только после завершения сделки.");
+        if (deal.Status == DealStatus.Cancelled)
+            throw new InvalidOperationException("Нельзя оставить отзыв по отменённой сделке.");
 
         if (deal.InitiatorID != request.AuthorID && deal.PartnerID != request.AuthorID)
             throw new UnauthorizedAccessException("Вы не участник этой сделки.");
 
-        // Определяем, о ком оставляем отзыв
         var targetId = deal.InitiatorID == request.AuthorID ? deal.PartnerID : deal.InitiatorID;
 
-        // Проверяем, не оставлял ли уже отзыв
         var existing = await _context.Reviews
             .AnyAsync(r => r.DealID == request.DealID && r.AuthorID == request.AuthorID, cancellationToken);
+
         if (existing)
             throw new InvalidOperationException("Вы уже оставили отзыв по этой сделке.");
 

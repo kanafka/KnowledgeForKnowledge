@@ -7,6 +7,7 @@ using Application.Features.SkillRequests.Queries.GetSkillRequests;
 using Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 
 namespace API.Controllers;
 
@@ -17,19 +18,26 @@ public class SkillRequestsController : BaseController
     private Guid CurrentAccountId =>
         Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
-    /// <summary>Список запросов с фильтрацией и пагинацией (публичный)</summary>
+    private bool IsAdmin =>
+        User.IsInRole("Admin");
+
     [HttpGet]
     public async Task<IActionResult> GetRequests(
+        [FromQuery] Guid? skillId,
         [FromQuery] Guid? accountId,
         [FromQuery] RequestStatus? status,
+        [FromQuery] string? search,
+        [FromQuery] Guid? helperAccountId,
+        [FromQuery] bool? canHelp,
+        [FromQuery] bool? requireBarter,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20)
     {
-        var result = await Mediator.Send(new GetSkillRequestsQuery(accountId, status, page, pageSize));
+        var result = await Mediator.Send(
+            new GetSkillRequestsQuery(skillId, accountId, status, search, helperAccountId, canHelp, requireBarter, page, pageSize));
         return Ok(result);
     }
 
-    /// <summary>Получить запрос по ID</summary>
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id)
     {
@@ -37,7 +45,6 @@ public class SkillRequestsController : BaseController
         return Ok(result);
     }
 
-    /// <summary>Создать запрос на изучение навыка</summary>
     [HttpPost]
     [Authorize]
     public async Task<IActionResult> CreateRequest([FromBody] CreateRequestBody request)
@@ -47,7 +54,6 @@ public class SkillRequestsController : BaseController
         return CreatedAtAction(nameof(GetById), new { id }, new { id });
     }
 
-    /// <summary>Изменить статус запроса (Closed / OnHold / Open)</summary>
     [HttpPut("{id:guid}")]
     [Authorize]
     public async Task<IActionResult> UpdateStatus(Guid id, [FromBody] UpdateStatusBody body)
@@ -56,12 +62,11 @@ public class SkillRequestsController : BaseController
         return NoContent();
     }
 
-    /// <summary>Удалить запрос (только автор)</summary>
     [HttpDelete("{id:guid}")]
     [Authorize]
-    public async Task<IActionResult> Delete(Guid id)
+    public async Task<IActionResult> Delete(Guid id, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] DeleteCardRequest? request)
     {
-        await Mediator.Send(new DeleteSkillRequestCommand(id, CurrentAccountId));
+        await Mediator.Send(new DeleteSkillRequestCommand(id, CurrentAccountId, IsAdmin, request?.DeletionReason));
         return NoContent();
     }
 }

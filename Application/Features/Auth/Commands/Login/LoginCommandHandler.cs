@@ -13,7 +13,6 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResult>
     private static readonly TimeSpan LockoutDuration = TimeSpan.FromMinutes(15);
 
     private readonly IApplicationDbContext _context;
-    private readonly IJwtService _jwtService;
     private readonly IPasswordHasher _passwordHasher;
     private readonly ITelegramService _telegram;
     private readonly IMemoryCache _cache;
@@ -26,7 +25,6 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResult>
         IMemoryCache cache)
     {
         _context = context;
-        _jwtService = jwtService;
         _passwordHasher = passwordHasher;
         _telegram = telegram;
         _cache = cache;
@@ -40,7 +38,6 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResult>
         if (account is null)
             throw new UnauthorizedAccessException("Неверный логин или пароль.");
 
-        // Проверка блокировки
         if (!account.IsActive)
             throw new UnauthorizedAccessException("Аккаунт деактивирован.");
 
@@ -51,7 +48,6 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResult>
                 $"Аккаунт временно заблокирован. Попробуйте через {remaining} мин.");
         }
 
-        // Снимаем истёкшую блокировку
         if (account.LockoutUntil.HasValue && account.LockoutUntil.Value <= DateTime.UtcNow)
         {
             account.LockoutUntil = null;
@@ -67,38 +63,62 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResult>
                 account.FailedLoginAttempts = 0;
                 await _context.SaveChangesAsync(cancellationToken);
                 throw new UnauthorizedAccessException(
-                    $"Слишком много неверных попыток. Аккаунт заблокирован на {(int)LockoutDuration.TotalMinutes} минут.");
+                    $"Слишком много неверных попыток. Аккаунт заблокирован на {(int)LockoutDuration.TotalMinutes} мин.");
             }
 
             await _context.SaveChangesAsync(cancellationToken);
             throw new UnauthorizedAccessException("Неверный логин или пароль.");
         }
 
-        // Сброс счётчика при успехе
         if (account.FailedLoginAttempts > 0)
         {
             account.FailedLoginAttempts = 0;
             account.LockoutUntil = null;
         }
 
-        // 2FA: если привязан Telegram — шлём OTP
-        if (!string.IsNullOrEmpty(account.TelegramID))
+        if (string.IsNullOrEmpty(account.TelegramID))
         {
-            var code = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
-            var sessionId = Guid.NewGuid().ToString("N");
-
-            _cache.Set($"otp:{sessionId}", new OtpSession(account.AccountID, code, 0),
-                TimeSpan.FromMinutes(5));
-
+            account.TelegramLinkToken ??= await GenerateUniqueTelegramLinkToken(cancellationToken);
             await _context.SaveChangesAsync(cancellationToken);
-            await _telegram.SendOtpAsync(account.TelegramID, code, cancellationToken);
 
-            return new LoginResult(string.Empty, account.AccountID, account.IsAdmin,
-                RequiresOtp: true, SessionId: sessionId);
+            return new LoginResult(
+                string.Empty,
+                account.AccountID,
+                account.IsAdmin,
+                RequiresTelegramLink: true,
+                TelegramLinkToken: account.TelegramLinkToken);
         }
 
+        var code = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
+        var sessionId = Guid.NewGuid().ToString("N");
+
+        _cache.Set($"otp:{sessionId}", new OtpSession(account.AccountID, code, 0),
+            TimeSpan.FromMinutes(5));
+
         await _context.SaveChangesAsync(cancellationToken);
-        var token = _jwtService.GenerateToken(account);
-        return new LoginResult(token, account.AccountID, account.IsAdmin);
+        await _telegram.SendOtpAsync(account.TelegramID, code, cancellationToken);
+
+        return new LoginResult(string.Empty, account.AccountID, account.IsAdmin,
+            RequiresOtp: true, SessionId: sessionId);
+    }
+
+    private async Task<string> GenerateUniqueTelegramLinkToken(CancellationToken cancellationToken)
+    {
+        string token;
+        do
+        {
+            token = GenerateToken();
+        }
+        while (await _context.Accounts.AnyAsync(account => account.TelegramLinkToken == token, cancellationToken));
+
+        return token;
+    }
+
+    private static string GenerateToken()
+    {
+        const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        return new string(Enumerable.Range(0, 8)
+            .Select(_ => chars[RandomNumberGenerator.GetInt32(chars.Length)])
+            .ToArray());
     }
 }

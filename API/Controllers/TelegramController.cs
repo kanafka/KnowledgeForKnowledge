@@ -15,11 +15,13 @@ public class TelegramController : BaseController
 {
     private readonly IApplicationDbContext _context;
     private readonly IConfiguration _config;
+    private readonly ITelegramService _telegram;
 
-    public TelegramController(IApplicationDbContext context, IConfiguration config)
+    public TelegramController(IApplicationDbContext context, IConfiguration config, ITelegramService telegram)
     {
         _context = context;
         _config = config;
+        _telegram = telegram;
     }
 
     /// <summary>
@@ -52,9 +54,17 @@ public class TelegramController : BaseController
             var text = textElem.GetString() ?? string.Empty;
             var chatId = from.GetProperty("id").GetInt64().ToString();
 
-            if (text.StartsWith("/start ") && text.Length > 7)
+            if (text.StartsWith("/start", StringComparison.OrdinalIgnoreCase))
             {
-                var token = text[7..].Trim().ToUpperInvariant();
+                var parts = text.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (parts.Length < 2)
+                {
+                    await _telegram.SendMessageAsync(chatId,
+                        "Я на связи, но для привязки аккаунта нужна персональная команда вида /start TOKEN. Вернитесь на сайт и скопируйте команду из блока привязки Telegram.");
+                    return Ok();
+                }
+
+                var token = parts[1].Trim().ToUpperInvariant();
                 var account = await _context.Accounts
                     .FirstOrDefaultAsync(a => a.TelegramLinkToken == token);
 
@@ -63,6 +73,12 @@ public class TelegramController : BaseController
                     account.TelegramID = chatId;
                     account.TelegramLinkToken = null;
                     await _context.SaveChangesAsync();
+                    await _telegram.SendMessageAsync(chatId, "Telegram привязан к аккаунту. Теперь можно запросить код входа на сайте.");
+                }
+                else
+                {
+                    await _telegram.SendMessageAsync(chatId,
+                        "Не нашёл аккаунт по этому токену. На сайте нажмите «Войти» ещё раз и скопируйте свежую команду /start TOKEN.");
                 }
             }
         }

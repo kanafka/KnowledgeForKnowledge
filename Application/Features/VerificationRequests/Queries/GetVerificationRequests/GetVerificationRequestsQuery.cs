@@ -18,7 +18,13 @@ public record GetVerificationRequestsQuery(
 public record VerificationRequestDto(
     Guid RequestID,
     Guid AccountID,
+    string AccountName,
     VerificationRequestType RequestType,
     VerificationStatus Status,
-    Guid? ProofID
+    Guid? ProofID,
+    string? ProofFileURL,
+    Guid? SkillID,
+    string? SkillName,
+    SkillLevel? SkillLevel,
+    DateTime CreatedAt
 );

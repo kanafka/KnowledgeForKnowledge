@@ -31,6 +31,13 @@ public class CreateSkillOfferCommandHandler : IRequestHandler<CreateSkillOfferCo
                 new ValidationFailure("Profile", "Для создания предложения необходимо сначала заполнить профиль.")
             });
 
+        var hasUserSkill = await _context.UserSkills
+            .AnyAsync(us => us.AccountID == request.AccountID && us.SkillID == request.SkillID, cancellationToken);
+        if (!hasUserSkill)
+            throw new ValidationException(new[] {
+                new ValidationFailure("SkillID", "Можно публиковать карточки только по навыкам, которые уже добавлены в личный кабинет.")
+            });
+
         var offer = new SkillOffer
         {
             OfferID = Guid.NewGuid(),

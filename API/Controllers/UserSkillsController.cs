@@ -26,7 +26,12 @@ public class UserSkillsController : BaseController
     public async Task<IActionResult> AddSkill([FromBody] AddSkillRequest request)
     {
         var accountId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-        await Mediator.Send(new AddUserSkillCommand(accountId, request.SkillID, request.Level));
+        await Mediator.Send(new AddUserSkillCommand(
+            accountId,
+            request.SkillID,
+            request.Level,
+            request.Description,
+            request.LearnedAt));
         return NoContent();
     }
 
@@ -40,4 +45,8 @@ public class UserSkillsController : BaseController
     }
 }
 
-public record AddSkillRequest(Guid SkillID, SkillLevel Level);
+public record AddSkillRequest(
+    Guid SkillID,
+    SkillLevel Level,
+    string? Description,
+    string? LearnedAt);
