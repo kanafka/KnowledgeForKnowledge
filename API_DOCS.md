@@ -51,25 +51,44 @@ NotificationType:        0=NewApplication, 1=ApplicationAccepted, 2=ApplicationR
 ## AUTH `/api/auth`
 
 ### `POST /api/auth/login`
-Вход. Если к аккаунту привязан Telegram — возвращает сессию для 2FA вместо токена.
+
+**⚠️ Telegram обязателен для входа.** Если Telegram не привязан — вместо токена возвращается токен привязки и флаг `requiresTelegramLink: true`. Пользователь должен сначала привязать Telegram, затем войти снова.
 
 **Body:**
 ```json
 { "login": "user@example.com", "password": "secret" }
 ```
 
-**Ответ 200 — без 2FA:**
+**Ответ 200 — Telegram привязан (2FA):**
 ```json
-{ "token": "eyJ...", "accountId": "uuid", "isAdmin": false, "requiresOtp": false, "sessionId": null }
+{
+  "token": "",
+  "accountId": "uuid",
+  "isAdmin": false,
+  "requiresOtp": true,
+  "sessionId": "hex32",
+  "requiresTelegramLink": false,
+  "telegramLinkToken": null
+}
 ```
+> Следующий шаг: `POST /api/auth/verify-otp`
 
-**Ответ 200 — с 2FA (Telegram привязан):**
+**Ответ 200 — Telegram НЕ привязан:**
 ```json
-{ "token": "", "accountId": "uuid", "isAdmin": false, "requiresOtp": true, "sessionId": "hex32" }
+{
+  "token": "",
+  "accountId": "uuid",
+  "isAdmin": false,
+  "requiresOtp": false,
+  "sessionId": null,
+  "requiresTelegramLink": true,
+  "telegramLinkToken": "A3KX9MZP"
+}
 ```
+> Следующий шаг: пользователь пишет боту `/start A3KX9MZP`, затем заново `POST /api/auth/login`
 
 **Ошибки:**
-- `401` — неверный логин/пароль, аккаунт деактивирован, аккаунт заблокирован (в сообщении — минуты до разблокировки)
+- `401` — неверный логин/пароль, аккаунт деактивирован, аккаунт заблокирован (сообщение содержит минуты)
 
 ---
 
@@ -126,14 +145,30 @@ NotificationType:        0=NewApplication, 1=ApplicationAccepted, 2=ApplicationR
 ## ACCOUNTS `/api/accounts`
 
 ### `POST /api/accounts`
-Регистрация нового аккаунта. Публичный.
+Регистрация. Публичный.
 
 **Body:**
 ```json
-{ "login": "user@example.com", "password": "secret123" }
+{
+  "login": "user@example.com",
+  "password": "secret123",
+  "telegramID": null,
+  "createTelegramLinkToken": true
+}
 ```
 
-**Ответ 201:** `"uuid"` (ID нового аккаунта)
+> `telegramID` — опционально, если уже известен chat_id.  
+> `createTelegramLinkToken: true` — сервер сразу генерирует токен привязки, удобно для онбординга.
+
+**Ответ 201:**
+```json
+{
+  "accountId": "uuid",
+  "telegramLinkToken": "A3KX9MZP"
+}
+```
+
+> `telegramLinkToken` — `null` если `createTelegramLinkToken: false`
 
 **Ошибки:**
 - `400` — логин занят, пароль слишком короткий
@@ -141,14 +176,13 @@ NotificationType:        0=NewApplication, 1=ApplicationAccepted, 2=ApplicationR
 ---
 
 ### `GET /api/accounts/me` 🔒
-Данные текущего авторизованного пользователя.
 
 **Ответ 200:**
 ```json
 {
   "accountID": "uuid",
   "login": "user@example.com",
-  "telegramID": null,
+  "telegramID": "123456789",
   "isAdmin": false,
   "isActive": true,
   "createdAt": "2025-01-01T00:00:00Z"
@@ -158,9 +192,8 @@ NotificationType:        0=NewApplication, 1=ApplicationAccepted, 2=ApplicationR
 ---
 
 ### `GET /api/accounts/{id}` 🔒
-Аккаунт по ID.
+Аккаунт по ID. Формат ответа — тот же что `/me`.
 
-**Ответ 200:** Тот же формат что `/me`.  
 **Ошибки:** `404`
 
 ---
@@ -173,42 +206,34 @@ NotificationType:        0=NewApplication, 1=ApplicationAccepted, 2=ApplicationR
 ---
 
 ### `PUT /api/accounts/{id}` 🔒
-Обновить TelegramID вручную.
+Обновить TelegramID вручную. Только свой аккаунт.
 
-**Body:**
-```json
-{ "telegramID": "123456789" }
-```
+**Body:** `{ "telegramID": "123456789" }`
 
-**Ответ 204**. Только свой аккаунт (`403` иначе).
+**Ответ 204**.
 
 ---
 
 ### `PUT /api/accounts/{id}/password` 🔒
-Смена пароля.
+Смена пароля. Только свой аккаунт.
 
-**Body:**
-```json
-{ "currentPassword": "old", "newPassword": "new123" }
-```
+**Body:** `{ "currentPassword": "old", "newPassword": "new123" }`
 
-**Ответ 204**. Только свой аккаунт.
+**Ответ 204**.
 
-**Ошибки:**
-- `400` — неверный текущий пароль
-- `403` — чужой аккаунт
+**Ошибки:** `400` — неверный текущий пароль, `403` — чужой аккаунт
 
 ---
 
 ### `DELETE /api/accounts/{id}` 🔒
-Деактивировать аккаунт (soft delete). Пользователь — только свой, Admin — любой.
+Деактивация (soft delete). Пользователь — только свой, Admin — любой.
 
 **Ответ 204**.
 
 ---
 
 ### `PUT /api/accounts/{id}/activate` 🔒 Admin only
-Реактивировать деактивированный аккаунт.
+Реактивировать аккаунт.
 
 **Ответ 204**.
 
@@ -216,11 +241,9 @@ NotificationType:        0=NewApplication, 1=ApplicationAccepted, 2=ApplicationR
 
 ## USER PROFILES `/api/userprofiles`
 
-> Весь раздел требует JWT (`[Authorize]` на контроллере), кроме GET профиля.
-
 ### `GET /api/userprofiles/{accountId}`
-Профиль пользователя. Если профиль не создан — возвращает частичный объект из данных аккаунта (`hasProfile: false`).  
-Поле `contactInfo` видно только самому пользователю и Admin.
+Публичный. Если профиль не создан — возвращает частичный объект (`hasProfile: false`).  
+`contactInfo` виден только самому пользователю и Admin.
 
 **Ответ 200:**
 ```json
@@ -237,10 +260,9 @@ NotificationType:        0=NewApplication, 1=ApplicationAccepted, 2=ApplicationR
 }
 ```
 
-> Для анонимного запроса `contactInfo` будет `null`.
+> Для анонима / чужого пользователя `contactInfo` будет `null`.
 
-**Ошибки:**
-- `404` — аккаунт не существует вовсе
+**Ошибки:** `404` — аккаунт не существует вовсе.
 
 ---
 
@@ -263,7 +285,8 @@ NotificationType:        0=NewApplication, 1=ApplicationAccepted, 2=ApplicationR
 ---
 
 ### `POST /api/userprofiles/photo` 🔒
-Загрузить фото профиля. `multipart/form-data`, поле `photo`.
+Загрузить фото профиля. `multipart/form-data`, поле `photo`.  
+Если профиль ещё не создан — создаётся частичный профиль автоматически.
 
 **Ограничения:** JPEG / PNG / WebP, макс 5 МБ.
 
@@ -272,8 +295,7 @@ NotificationType:        0=NewApplication, 1=ApplicationAccepted, 2=ApplicationR
 { "photoUrl": "/uploads/photos/uuid_abc.jpg" }
 ```
 
-**Ошибки:**
-- `400` — файл не выбран, неверный формат, превышен размер
+**Ошибки:** `400` — файл не выбран, неверный формат, превышен размер.
 
 ---
 
@@ -282,16 +304,10 @@ NotificationType:        0=NewApplication, 1=ApplicationAccepted, 2=ApplicationR
 ### `GET /api/skills?search=&epithet=&page=1&pageSize=20`
 Каталог навыков. Публичный.
 
-**Query params:**
-- `search` — строка поиска по названию
-- `epithet` — числовое значение `SkillEpithet` (0–9)
-
 **Ответ 200:**
 ```json
 {
-  "items": [
-    { "skillID": "uuid", "skillName": "Python", "epithet": 0 }
-  ],
+  "items": [{ "skillID": "uuid", "skillName": "Python", "epithet": 0 }],
   "totalCount": 50, "page": 1, "pageSize": 20, "totalPages": 3
 }
 ```
@@ -299,32 +315,34 @@ NotificationType:        0=NewApplication, 1=ApplicationAccepted, 2=ApplicationR
 ---
 
 ### `POST /api/skills` 🔒 Admin only
-
-**Body:**
-```json
-{ "skillName": "Rust", "epithet": 0 }
-```
-
+**Body:** `{ "skillName": "Rust", "epithet": 0 }`  
 **Ответ 201:** `{ "id": "uuid" }`
 
 ---
 
 ### `DELETE /api/skills/{id}` 🔒 Admin only
-
 **Ответ 204**.
 
 ---
 
 ## SKILL OFFERS `/api/skilloffers`
 
-### `GET /api/skilloffers?skillId=&accountId=&isActive=&search=&page=1&pageSize=20`
+### `GET /api/skilloffers`
 Список предложений. Публичный. Сортировка: новые первые.
 
 **Query params:**
-- `skillId` — фильтр по навыку
-- `accountId` — фильтр по автору
-- `isActive` — `true` / `false`
-- `search` — поиск по заголовку, описанию, названию навыка
+
+| Параметр | Тип | Описание |
+|---|---|---|
+| `skillId` | guid | Фильтр по навыку |
+| `accountId` | guid | Фильтр по автору |
+| `isActive` | bool | Только активные / неактивные |
+| `search` | string | Поиск по заголовку, описанию, навыку |
+| `viewerAccountId` | guid | ID смотрящего — для barter-фильтрации |
+| `viewerHasSkill` | bool | `true` — только офферы, где смотрящий может помочь (есть нужный навык) |
+| `requireBarter` | bool | `true` — только офферы, у автора которых есть запросы на навыки смотрящего |
+| `page` | int | По умолчанию 1 |
+| `pageSize` | int | По умолчанию 20 |
 
 **Ответ 200:**
 ```json
@@ -338,7 +356,7 @@ NotificationType:        0=NewApplication, 1=ApplicationAccepted, 2=ApplicationR
       "skillID": "uuid",
       "skillName": "Python",
       "title": "Обучу Python",
-      "details": "Базовый курс за 4 занятия",
+      "details": "Базовый курс",
       "isActive": true
     }
   ],
@@ -361,47 +379,62 @@ NotificationType:        0=NewApplication, 1=ApplicationAccepted, 2=ApplicationR
 
 **Body:**
 ```json
-{
-  "skillID": "uuid",
-  "title": "Обучу Python",
-  "details": "Базовый курс за 4 занятия"
-}
+{ "skillID": "uuid", "title": "Обучу Python", "details": "Базовый курс" }
 ```
 
 **Ответ 201:** `{ "id": "uuid" }`
 
-**Ошибки:**
-- `400` — профиль не заполнен, `skillID` не найден в каталоге
+**Ошибки:** `400` — профиль не заполнен, `skillID` не найден.
 
 ---
 
 ### `PUT /api/skilloffers/{id}` 🔒
-Обновить своё предложение.
+Обновить своё предложение. Только владелец.
 
 **Body:**
 ```json
-{
-  "title": "Новый заголовок",
-  "details": "Новое описание",
-  "isActive": false
-}
+{ "title": "Новый заголовок", "details": "Новое описание", "isActive": false }
 ```
 
-**Ответ 204**. Только владелец (`403` иначе).
+**Ответ 204**.
 
 ---
 
 ### `DELETE /api/skilloffers/{id}` 🔒
-Удалить своё предложение.
+Удалить предложение.  
+Пользователь — только своё. Admin — любое, с уведомлением владельца в Telegram.
 
-**Ответ 204**. Только владелец (`403` иначе).
+**Body (опциональный):**
+```json
+{ "deletionReason": "Нарушение правил платформы" }
+```
+
+> Body необязателен. Если передан `deletionReason` и удаляет Admin — владелец получит сообщение в Telegram.
+
+**Ответ 204**.
+
+**Ошибки:** `403` — не владелец и не Admin.
 
 ---
 
 ## SKILL REQUESTS `/api/skillrequests`
 
-### `GET /api/skillrequests?accountId=&status=&page=1&pageSize=20`
+### `GET /api/skillrequests`
 Список запросов на обучение. Публичный. Сортировка: новые первые.
+
+**Query params:**
+
+| Параметр | Тип | Описание |
+|---|---|---|
+| `skillId` | guid | Фильтр по навыку |
+| `accountId` | guid | Фильтр по автору |
+| `status` | int | Фильтр по статусу (`RequestStatus`) |
+| `search` | string | Поиск по заголовку и описанию |
+| `helperAccountId` | guid | ID помощника — для barter-фильтрации |
+| `canHelp` | bool | `true` — только запросы, где помощник имеет нужный навык |
+| `requireBarter` | bool | `true` — только запросы, у автора которых есть навыки, нужные помощнику |
+| `page` | int | По умолчанию 1 |
+| `pageSize` | int | По умолчанию 20 |
 
 **Ответ 200:**
 ```json
@@ -438,27 +471,19 @@ NotificationType:        0=NewApplication, 1=ApplicationAccepted, 2=ApplicationR
 
 **Body:**
 ```json
-{
-  "skillID": "uuid",
-  "title": "Ищу репетитора по Python",
-  "details": "Нужно с нуля"
-}
+{ "skillID": "uuid", "title": "Ищу репетитора по Python", "details": "Нужно с нуля" }
 ```
 
 **Ответ 201:** `{ "id": "uuid" }`
 
-**Ошибки:**
-- `400` — профиль не заполнен, `skillID` не найден в каталоге
+**Ошибки:** `400` — профиль не заполнен, `skillID` не найден.
 
 ---
 
 ### `PUT /api/skillrequests/{id}` 🔒
 Изменить статус своего запроса.
 
-**Body:**
-```json
-{ "status": 2 }
-```
+**Body:** `{ "status": 2 }`
 
 > Допустимые значения: `0=Open`, `2=Closed`, `3=OnHold`.  
 > Статус `1=Fulfilled` устанавливается системой автоматически при принятии заявки.
@@ -468,21 +493,37 @@ NotificationType:        0=NewApplication, 1=ApplicationAccepted, 2=ApplicationR
 ---
 
 ### `DELETE /api/skillrequests/{id}` 🔒
-Удалить свой запрос.
+Удалить запрос.  
+Пользователь — только свой. Admin — любой, с уведомлением владельца в Telegram.
 
-**Ответ 204**. Только автор (`403` иначе).
+**Body (опциональный):**
+```json
+{ "deletionReason": "Нарушение правил платформы" }
+```
+
+**Ответ 204**.
+
+**Ошибки:** `403` — не автор и не Admin.
 
 ---
 
 ## USER SKILLS `/api/userskills`
 
 ### `GET /api/userskills/{accountId}` 🔒
-Навыки пользователя с уровнями.
+Навыки пользователя.
 
 **Ответ 200:**
 ```json
 [
-  { "skillID": "uuid", "skillName": "Python", "epithet": 0, "level": 2 }
+  {
+    "skillID": "uuid",
+    "skillName": "Python",
+    "epithet": 0,
+    "level": 2,
+    "description": "Занимаюсь 3 года, знаю Django и FastAPI",
+    "learnedAt": "2021",
+    "isVerified": false
+  }
 ]
 ```
 
@@ -493,8 +534,15 @@ NotificationType:        0=NewApplication, 1=ApplicationAccepted, 2=ApplicationR
 
 **Body:**
 ```json
-{ "skillID": "uuid", "level": 2 }
+{
+  "skillID": "uuid",
+  "level": 2,
+  "description": "Занимаюсь 3 года",
+  "learnedAt": "2021"
+}
 ```
+
+> `description` и `learnedAt` — опциональные строки. `learnedAt` произвольный текст («2021», «с детства», «НИУ ВШЭ 2022»).
 
 **Ответ 204**.
 
@@ -509,8 +557,6 @@ NotificationType:        0=NewApplication, 1=ApplicationAccepted, 2=ApplicationR
 
 ## APPLICATIONS `/api/applications`
 
-Отклики на предложения и запросы.
-
 ### `GET /api/applications/incoming?page=1&pageSize=20` 🔒
 Входящие заявки (кто откликнулся на мои предложения/запросы, статус `Pending`).
 
@@ -524,7 +570,7 @@ NotificationType:        0=NewApplication, 1=ApplicationAccepted, 2=ApplicationR
       "applicantName": "Petr Petrov",
       "offerID": "uuid",
       "skillRequestID": null,
-      "message": "Хочу с вами обменяться",
+      "message": "Хочу обменяться",
       "status": 0,
       "createdAt": "2025-04-01T10:00:00Z"
     }
@@ -541,63 +587,48 @@ NotificationType:        0=NewApplication, 1=ApplicationAccepted, 2=ApplicationR
 ---
 
 ### `GET /api/applications/processed?status=&page=1&pageSize=20` 🔒
-Обработанные заявки (принятые / отклонённые). Фильтр `status`: `1=Accepted`, `2=Rejected`.
+Обработанные заявки. Фильтр `status`: `1=Accepted`, `2=Rejected`.
 
 ---
 
 ### `POST /api/applications` 🔒
-Откликнуться на предложение или запрос. Указать ровно одно из двух полей.
+Откликнуться. Указать ровно одно из двух полей.
 
 **Body:**
 ```json
-{
-  "offerID": "uuid",
-  "skillRequestID": null,
-  "message": "Хочу обменяться"
-}
+{ "offerID": "uuid", "skillRequestID": null, "message": "Хочу обменяться" }
 ```
 
 **Ответ 201:** `{ "id": "uuid" }`
 
-**Ошибки:**
-- `400` — оба поля пусты или оба заполнены, уже существует отклик от этого пользователя
-- `400` — нельзя откликнуться на собственное предложение/запрос
+**Ошибки:** `400` — оба поля пусты или оба заполнены, уже есть отклик, нельзя откликнуться на своё.
 
 ---
 
 ### `DELETE /api/applications/{id}` 🔒
-Отозвать свой отклик (только пока статус `Pending`).
+Отозвать свой отклик (только пока `Pending`).
 
 **Ответ 204**.
 
-**Ошибки:**
-- `400` — отклик уже обработан
-- `403` — чужой отклик
+**Ошибки:** `400` — уже обработан, `403` — чужой отклик.
 
 ---
 
 ### `PUT /api/applications/{id}/respond` 🔒
 Принять или отклонить входящую заявку. Только владелец предложения/запроса.
 
-**Body:**
-```json
-{ "status": 1 }
-```
+**Body:** `{ "status": 1 }`
 
-> `1=Accepted` — сделка (`Deal`) создаётся автоматически, оба участника получают уведомление.  
-> `2=Rejected` — отклонение, заявитель получает уведомление.
+> `1=Accepted` → сделка создаётся автоматически, оба получают уведомление.  
+> `2=Rejected` → заявитель получает уведомление.
 
 **Ответ 204**.
 
-**Ошибки:**
-- `403` — вы не владелец предложения/запроса
-- `400` — заявка уже обработана
+**Ошибки:** `403` — не владелец, `400` — уже обработана.
 
 ---
 
 ## DEALS `/api/deals`
-
-Сделки создаются автоматически при принятии заявки (`RespondApplication → Accepted`).
 
 ### `GET /api/deals?page=1&pageSize=20` 🔒
 Мои сделки (все статусы).
@@ -624,34 +655,24 @@ NotificationType:        0=NewApplication, 1=ApplicationAccepted, 2=ApplicationR
 ---
 
 ### `GET /api/deals/user/{accountId}?page=1&pageSize=20`
-Публичная история завершённых/отменённых сделок пользователя. Публичный.
-
-**Ответ 200:** Тот же формат.
+Публичная история завершённых/отменённых сделок. Публичный.
 
 ---
 
 ### `GET /api/deals/{id}` 🔒
-Детали сделки. Доступно только участникам.
+Детали сделки. Только участники.
 
-**Ответ 200:** Тот же формат.
-
-**Ошибки:**
-- `403` — не участник сделки
-- `404` — сделка не найдена
+**Ошибки:** `403` — не участник, `404`.
 
 ---
 
 ### `PUT /api/deals/{id}/complete` 🔒
-Отметить сделку завершённой со своей стороны.
+Отметить завершённой со своей стороны.
 
-**Схема двустороннего завершения:**
-- Один участник нажал → статус `CompletedByInitiator` (1) или `CompletedByPartner` (2)
-- Оба нажали → статус `Completed` (3), рассылаются уведомления
+> Один нажал → `CompletedByInitiator` или `CompletedByPartner`.  
+> Оба нажали → `Completed`, рассылаются уведомления.
 
 **Ответ 204**.
-
-**Ошибки:**
-- `403` — не участник
 
 ---
 
@@ -660,9 +681,7 @@ NotificationType:        0=NewApplication, 1=ApplicationAccepted, 2=ApplicationR
 
 **Ответ 204**.
 
-**Ошибки:**
-- `403` — не участник
-- `400` — сделка уже завершена
+**Ошибки:** `403` — не участник, `400` — уже завершена.
 
 ---
 
@@ -691,26 +710,22 @@ NotificationType:        0=NewApplication, 1=ApplicationAccepted, 2=ApplicationR
 ---
 
 ### `POST /api/reviews` 🔒
-Оставить отзыв. Только по завершённой сделке (`status=Completed`), один раз на сделку.
+Оставить отзыв. Только по завершённой сделке, один раз на сделку.
 
-**Body:**
-```json
-{ "dealID": "uuid", "rating": 5, "comment": "Отлично!" }
-```
+**Body:** `{ "dealID": "uuid", "rating": 5, "comment": "Отлично!" }`
 
-> `rating`: целое число от 1 до 5.
+> `rating`: 1–5.
 
 **Ответ 201:** `{ "id": "uuid" }`
 
-**Ошибки:**
-- `400` — сделка не завершена, отзыв уже оставлен, вы не участник этой сделки
+**Ошибки:** `400` — сделка не завершена, отзыв уже есть, не участник.
 
 ---
 
 ## MATCHES `/api/matches`
 
 ### `GET /api/matches` 🔒
-Умный подбор партнёров. Алгоритм: пересечение моих навыков с чужими запросами и чужих навыков с моими запросами.
+Умный подбор партнёров.
 
 **Ответ 200:**
 ```json
@@ -720,24 +735,19 @@ NotificationType:        0=NewApplication, 1=ApplicationAccepted, 2=ApplicationR
     "fullName": "Petr Petrov",
     "photoURL": null,
     "matchScore": 2,
-    "theyCanTeachMe": [
-      { "skillID": "uuid", "skillName": "Python" }
-    ],
-    "iCanTeachThem": [
-      { "skillID": "uuid", "skillName": "Design" }
-    ]
+    "theyCanTeachMe": [{ "skillID": "uuid", "skillName": "Python" }],
+    "iCanTeachThem": [{ "skillID": "uuid", "skillName": "Design" }]
   }
 ]
 ```
 
-> `matchScore` — сумма совпадений в обе стороны. Список отсортирован по убыванию.
+> `matchScore` — сумма совпадений. Сортировка по убыванию.
 
 ---
 
 ## EDUCATION `/api/education`
 
 ### `GET /api/education/{accountId}` 🔒
-Список записей об образовании.
 
 **Ответ 200:**
 ```json
@@ -754,15 +764,9 @@ NotificationType:        0=NewApplication, 1=ApplicationAccepted, 2=ApplicationR
 ---
 
 ### `POST /api/education` 🔒
-Добавить запись об образовании.
-
 **Body:**
 ```json
-{
-  "institutionName": "НИУ ВШЭ",
-  "degreeField": "Computer Science",
-  "yearCompleted": 2022
-}
+{ "institutionName": "НИУ ВШЭ", "degreeField": "Computer Science", "yearCompleted": 2022 }
 ```
 
 > `degreeField` и `yearCompleted` — опциональные.
@@ -772,18 +776,15 @@ NotificationType:        0=NewApplication, 1=ApplicationAccepted, 2=ApplicationR
 ---
 
 ### `DELETE /api/education/{id}` 🔒
-Удалить свою запись об образовании.
+Удалить свою запись. Только своя (`403` иначе).
 
-**Ответ 204**. Только своя запись (`403` иначе).
+**Ответ 204**.
 
 ---
 
 ## PROOFS `/api/proofs`
 
-Подтверждающие файлы к навыкам (дипломы, сертификаты).
-
 ### `GET /api/proofs/{accountId}` 🔒
-Список файлов-подтверждений пользователя.
 
 **Ответ 200:**
 ```json
@@ -801,25 +802,22 @@ NotificationType:        0=NewApplication, 1=ApplicationAccepted, 2=ApplicationR
 ---
 
 ### `POST /api/proofs` 🔒
-Загрузить документ. `multipart/form-data`.
+Загрузить файл. `multipart/form-data`.
 
 **Form fields:**
-- `file` — файл (JPEG / PNG / WebP / PDF, макс 10 МБ)
-- `skillID` _(опционально, guid)_ — привязать к конкретному навыку
+- `file` — JPEG / PNG / WebP / PDF, макс 10 МБ
+- `skillID` _(guid, опционально)_ — привязать к навыку
 
 **Ответ 201:** `{ "id": "uuid", "fileUrl": "/uploads/proofs/..." }`
 
-**Ошибки:**
-- `400` — файл не выбран, неверный формат, превышен размер, достигнут лимит 20 файлов
+**Ошибки:** `400` — файл не выбран, неверный формат/размер, достигнут лимит 20 файлов.
 
 ---
 
 ## VERIFICATION `/api/verification`
 
 ### `GET /api/verification?accountId=&status=&page=1&pageSize=20` 🔒
-Заявки на верификацию.  
-Обычный пользователь видит только свои.  
-Admin видит все, может фильтровать по `accountId`.
+Обычный пользователь видит только свои. Admin — все, с фильтром по `accountId`.
 
 **Ответ 200:**
 ```json
@@ -843,12 +841,9 @@ Admin видит все, может фильтровать по `accountId`.
 ### `POST /api/verification` 🔒
 Подать заявку на верификацию.
 
-**Body:**
-```json
-{ "requestType": 0, "proofID": "uuid" }
-```
+**Body:** `{ "requestType": 0, "proofID": "uuid" }`
 
-> `requestType`: `0=SkillVerify`, `1=AccountVerify`. `proofID` — опционально.
+> `proofID` — опционально.
 
 **Ответ 201:** `{ "id": "uuid" }`
 
@@ -859,10 +854,11 @@ Admin видит все, может фильтровать по `accountId`.
 
 **Body:**
 ```json
-{ "status": 1 }
+{ "status": 1, "rejectionReason": null }
 ```
 
-> `1=Approved`, `2=Rejected`
+> `1=Approved`, `2=Rejected`.  
+> `rejectionReason` — опциональная причина отказа, передаётся пользователю в уведомлении.
 
 **Ответ 204**.
 
@@ -871,7 +867,6 @@ Admin видит все, может фильтровать по `accountId`.
 ## NOTIFICATIONS `/api/notifications`
 
 ### `GET /api/notifications?unreadOnly=false&page=1&pageSize=30` 🔒
-Список уведомлений текущего пользователя.
 
 **Ответ 200:**
 ```json
@@ -890,7 +885,7 @@ Admin видит все, может фильтровать по `accountId`.
 }
 ```
 
-> `relatedEntityId` — ID связанной сущности (заявки, сделки и т.д.), можно использовать для навигации.
+> `relatedEntityId` — ID сущности для навигации (заявка, сделка и т.д.).
 
 ---
 
@@ -902,7 +897,7 @@ Admin видит все, может фильтровать по `accountId`.
 ---
 
 ### `PUT /api/notifications/read-all` 🔒
-Пометить все уведомления прочитанными.
+Пометить все прочитанными.
 
 **Ответ 204**.
 
@@ -911,90 +906,82 @@ Admin видит все, может фильтровать по `accountId`.
 ## TELEGRAM `/api/telegram`
 
 ### `POST /api/telegram/generate-link-token` 🔒
-Сгенерировать токен для привязки Telegram-аккаунта.  
-После получения пользователь открывает бота и отправляет `/start TOKEN`.
+Сгенерировать токен привязки Telegram вручную (если не использовался `createTelegramLinkToken` при регистрации).
 
-**Ответ 200:**
-```json
-{ "token": "ABC123DEF456" }
-```
+**Ответ 200:** `{ "token": "A3KX9MZP" }`
+
+**Ошибки:** `400` — Telegram уже привязан.
 
 ---
 
 ### `GET /api/telegram/notifications/settings` 🔒
-Текущие настройки Telegram-уведомлений.
-
-**Ответ 200:**
-```json
-{ "notificationsEnabled": true }
-```
+**Ответ 200:** `{ "notificationsEnabled": true }`
 
 ---
 
 ### `PUT /api/telegram/notifications/settings` 🔒
-Включить или отключить Telegram-уведомления.
-
-**Body:**
-```json
-{ "notificationsEnabled": false }
-```
+**Body:** `{ "notificationsEnabled": false }`
 
 **Ответ 204**.
 
 ---
 
 ### `POST /api/telegram/webhook`
-Вебхук для Telegram Bot API. Вызывается только серверами Telegram. С фронтенда не использовать.
+Вебхук Telegram Bot API. Вызывается только серверами Telegram.
 
 ---
 
 ## Типовые сценарии
 
-### Регистрация и вход
+### Регистрация и первый вход
 ```
-POST /api/accounts                          — регистрация
-POST /api/auth/login                        — вход
-  → requiresOtp: false  →  токен получен
-  → requiresOtp: true   →  POST /api/auth/verify-otp  →  токен получен
+POST /api/accounts  { createTelegramLinkToken: true }
+→ { accountId, telegramLinkToken: "A3KX9MZP" }
+
+Пользователь пишет боту: /start A3KX9MZP
+→ Telegram привязан
+
+POST /api/auth/login
+→ { requiresOtp: true, sessionId: "..." }
+
+POST /api/auth/verify-otp  { sessionId, code }
+→ { token: "eyJ..." }  ← JWT получен
 ```
 
 ### Заполнение профиля
 ```
-PUT  /api/userprofiles                      — создать/обновить профиль
-POST /api/userprofiles/photo                — загрузить фото
-POST /api/userskills                        — добавить навыки
-POST /api/education                         — добавить образование
-POST /api/proofs                            — загрузить сертификат
+PUT  /api/userprofiles                  — имя, описание, контакты
+POST /api/userprofiles/photo            — фото
+POST /api/userskills  { skillID, level, description, learnedAt }
+POST /api/education
+POST /api/proofs                        — диплом / сертификат
 ```
 
-### Обмен навыками
+### Бартер навыков
 ```
-POST /api/skilloffers                       — создать предложение
-POST /api/skillrequests                     — создать запрос
-POST /api/applications  { offerID }         — откликнуться на предложение
-PUT  /api/applications/{id}/respond { 1 }   — принять заявку → Deal создаётся
-PUT  /api/deals/{id}/complete               — оба участника отмечают завершение
-POST /api/reviews                           — оставить отзыв
+POST /api/skilloffers                   — создать предложение
+POST /api/skillrequests                 — создать запрос
+GET  /api/matches                       — найти подходящих партнёров
+
+POST /api/applications { offerID }      — откликнуться
+PUT  /api/applications/{id}/respond { 1 }  — принять → Deal создаётся
+PUT  /api/deals/{id}/complete           — оба отмечают завершение
+POST /api/reviews { dealID, rating }    — оставить отзыв
 ```
 
-### Умный поиск
+### Умный поиск с barter-фильтром
 ```
-GET  /api/matches                           — найти подходящих партнёров
-GET  /api/skilloffers?search=python         — поиск по предложениям
-GET  /api/skillrequests?skillId=uuid        — запросы по навыку
+GET /api/skilloffers?requireBarter=true&viewerAccountId=uuid
+    → офферы, авторы которых сами ищут навыки, которые есть у вас
+
+GET /api/skillrequests?canHelp=true&helperAccountId=uuid
+    → запросы, в которых вы можете помочь (у вас есть нужный навык)
 ```
 
-### Привязка Telegram и 2FA
+### Модерация (Admin)
 ```
-POST /api/telegram/generate-link-token      — получить токен
-  → пользователь пишет боту /start TOKEN
-  → аккаунт привязывается автоматически
-  → при следующем входе: POST /api/auth/login → 2FA → POST /api/auth/verify-otp
-```
+DELETE /api/skilloffers/{id}  { "deletionReason": "Нарушение" }
+    → владелец получает уведомление в Telegram
 
-### Сброс пароля
-```
-POST /api/auth/forgot-password { login }    — получить sessionId
-  → в Telegram приходит код
-POST /api/auth/reset-password               — сменить пароль
+PUT /api/verification/{id}/review  { "status": 2, "rejectionReason": "Недостаточно документов" }
 ```
