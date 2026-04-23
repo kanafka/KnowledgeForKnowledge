@@ -11,15 +11,23 @@ namespace Infrastructure;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddInfrastructure(
+        this IServiceCollection services,
+        IConfiguration configuration,
+        string? environmentName = null)
     {
-        var connectionString = configuration.GetConnectionString("DefaultConnection");
+        // In the "Testing" environment the WebApplicationFactory registers its own
+        // InMemory DbContext, so we skip the Npgsql registration here.
+        if (!string.Equals(environmentName, "Testing", StringComparison.OrdinalIgnoreCase))
+        {
+            var connectionString = configuration.GetConnectionString("DefaultConnection");
 
-        services.AddDbContext<ApplicationDbContext>(options =>
-            options.UseNpgsql(connectionString));
+            services.AddDbContext<ApplicationDbContext>(options =>
+                options.UseNpgsql(connectionString));
 
-        services.AddScoped<IApplicationDbContext>(provider =>
-            provider.GetRequiredService<ApplicationDbContext>());
+            services.AddScoped<IApplicationDbContext>(provider =>
+                provider.GetRequiredService<ApplicationDbContext>());
+        }
 
         // Repository + UnitOfWork
         services.AddScoped(typeof(IRepository<>), typeof(Repository<>));

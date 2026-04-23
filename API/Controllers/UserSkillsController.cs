@@ -15,6 +15,7 @@ public class UserSkillsController : BaseController
 {
     /// <summary>Получить навыки пользователя</summary>
     [HttpGet("{accountId:guid}")]
+    [AllowAnonymous]
     public async Task<IActionResult> GetUserSkills(Guid accountId)
     {
         var skills = await Mediator.Send(new GetUserSkillsQuery(accountId));

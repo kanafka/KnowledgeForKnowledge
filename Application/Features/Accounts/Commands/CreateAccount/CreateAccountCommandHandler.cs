@@ -19,6 +19,11 @@ public class CreateAccountCommandHandler : IRequestHandler<CreateAccountCommand,
 
     public async Task<CreateAccountResult> Handle(CreateAccountCommand request, CancellationToken cancellationToken)
     {
+        var exists = await _context.Accounts
+            .AnyAsync(a => a.Login == request.Login, cancellationToken);
+        if (exists)
+            throw new InvalidOperationException("An account with this login already exists.");
+
         var telegramLinkToken = string.IsNullOrWhiteSpace(request.TelegramID) && request.CreateTelegramLinkToken
             ? await GenerateUniqueTelegramLinkToken(cancellationToken)
             : null;

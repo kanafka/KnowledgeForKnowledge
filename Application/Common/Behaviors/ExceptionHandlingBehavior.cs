@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 namespace Application.Common.Behaviors;
 
 public class ExceptionHandlingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
-    where TRequest : IRequest<TResponse>
+    where TRequest : notnull
 {
     private readonly ILogger<ExceptionHandlingBehavior<TRequest, TResponse>> _logger;
 
