@@ -22,6 +22,7 @@ bld/
 
 # Visual Studio Code
 .vscode/
+.claude/
 
 # JetBrains Rider
 .idea/
